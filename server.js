@@ -49,6 +49,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 // import route functions
 //=======================
 
+// auth checks the login token on protected routes
+const { requireAuth } = require('./services/auth');
+
 // avatar
 const createAvatar = require('./routes/avatars/createAvatar');
 const getAvatar = require('./routes/avatars/getAvatar');
@@ -84,6 +87,7 @@ const deleteMessage = require('./routes/chats/messages/deleteMessage');
 // user
 const loginUser = require('./routes/users/loginUser');
 const createUser = require('./routes/users/createUser');
+const changePassword = require('./routes/users/changePassword');
 const getUsers = require('./routes/users/getUsers');
 const getUser = require('./routes/users/getUser');
 const updateUser = require('./routes/users/updateUser');
@@ -128,6 +132,7 @@ app.delete('/api/messages/:id', deleteMessage);
 // user
 app.post('/api/login', loginUser);
 app.post('/api/users', createUser);
+app.patch('/api/users/me/password', requireAuth, changePassword);
 app.get('/api/users', getUsers);
 app.get('/api/users/:id', getUser);
 app.put('/api/users/:id', updateUser);

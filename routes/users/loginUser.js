@@ -1,6 +1,6 @@
-// routes/users/loginUser.js
 const bcrypt = require('bcrypt');
 const { getDB } = require('../../services/database');
+const { signToken } = require('../../services/auth');
 
 /**
  * @swagger
@@ -14,10 +14,9 @@ const { getDB } = require('../../services/database');
  *         application/json:
  *           schema:
  *             type: object
- *             required: [username, email, password]
+ *             required: [username, password]
  *             properties:
  *               username: { type: string }
- *               email: { type: string }
  *               password: { type: string }
  *     responses:
  *       200:
@@ -26,8 +25,6 @@ const { getDB } = require('../../services/database');
  *         description: Missing fields
  *       401:
  *         description: Invalid username, email, or password
- *       404:
- *         description: No account uses that username or email (code ACCOUNT_NOT_FOUND)
  */
 async function loginUser(req, res) {
     try {
@@ -45,7 +42,12 @@ async function loginUser(req, res) {
         }
 
         // never send the hash back
-        res.json({ id: user._id, username: user.username, email: user.email });
+        res.json({
+            token: signToken(user._id),
+            id: user._id,
+            username: user.username,
+            email: user.email,
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Server error' });
