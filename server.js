@@ -136,7 +136,7 @@ app.patch('/api/users/me/password', requireAuth, changePassword);
 app.get('/api/users', getUsers);
 app.get('/api/users/:id', getUser);
 app.put('/api/users/:id', updateUser);
-app.delete('/api/users/:id', deleteUser);
+app.delete('/api/users/me', requireAuth, deleteUser);
 
 //=================
 // start the server

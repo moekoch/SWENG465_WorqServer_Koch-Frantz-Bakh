@@ -1,62 +1,60 @@
-const { ObjectId } = require('mongodb');
+const bcrypt = require('bcrypt');
 const { getDB } = require('../../services/database');
 
 /**
  * @swagger
- * /api/users/{id}:
+ * /api/users/me:
  *   delete:
- *     summary: Delete a user
- *     description: Deletes a user by their ID
+ *     summary: Delete the logged-in user's account
+ *     description: Deletes the user the token belongs to. The password must be sent to confirm.
  *     tags: [User]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: The database ID of the user
- *         schema:
- *           type: string
- *           example: 507f1f77bcf86cd799439011
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password: { type: string }
  *     responses:
  *       200:
  *         description: User deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: User deleted successfully
- *       404:
- *         description: User not found
+ *       400:
+ *         description: Missing password
+ *       401:
+ *         description: Not logged in, or incorrect password
  *       500:
  *         description: Internal server error, failed to delete user
  */
 const deleteUser = async (req, res) => {
     try {
-        // get database
-        const db = getDB();
-
-        // get users collection
-        const users = db.collection('users');
-
-        // delete the user by ID
-        const result = await users.deleteOne({
-            _id: new ObjectId(req.params.id)
-        });
-
-        // check if any document was deleted
-        if (result.deletedCount === 0) {
-            return res.status(404).json({
-                error: 'User not found.'
-            });
+        const { password } = req.body || {};
+ 
+        // password is required to confirm the delete
+        if (!password) {
+            return res.status(400).json({ error: 'Password is required.' });
         }
-
+ 
+        // account to delete comes from token
+        const users = getDB().collection('users');
+        const user = await users.findOne({ _id: req.user._id });
+ 
+        // check password against stored hash
+        const ok = user?.passwordHash && (await bcrypt.compare(password, user.passwordHash));
+        if (!ok) {
+            return res.status(401).json({ error: 'Incorrect password.' });
+        }
+ 
+        // delete user
+        await users.deleteOne({ _id: user._id });
+ 
         // send ok status and message of success
-        res.status(200).json({message: 'User deleted successfully.'});
+        res.status(200).json({ message: 'User deleted successfully.' });
     } catch (error) {
         console.error('Error deleting user:', error);
-        res.status(500).json({error: 'Failed to delete user.'});
+        res.status(500).json({ error: 'Failed to delete user.' });
     }
 };
 
