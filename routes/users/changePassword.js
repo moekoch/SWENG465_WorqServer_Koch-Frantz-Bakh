@@ -47,7 +47,7 @@ async function changePassword(req, res) {
         }
 
         // store new hash
-        const passwordHash = await bcrypt.hash(newPassword, 10);
+        const passwordHash = await bcrypt.hash(newPassword, 12);
         await users.updateOne({ _id: user._id }, { $set: { passwordHash } });
 
         res.json({ message: 'Password changed successfully.' });
