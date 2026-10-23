@@ -23,6 +23,8 @@ const { getDB } = require('../../services/database');
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Avatar'
+ *       400:
+ *         description: Invalid avatar ID
  *       404:
  *         description: Avatar not found
  *       500:
@@ -30,6 +32,11 @@ const { getDB } = require('../../services/database');
  */
 const getAvatar = async (req, res) => {
     try {
+        // reject IDs that aren't valid MongoDB ObjectIds
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ error: 'Invalid avatar ID.' });
+        }
+        
         // get database
         const db = getDB();
 

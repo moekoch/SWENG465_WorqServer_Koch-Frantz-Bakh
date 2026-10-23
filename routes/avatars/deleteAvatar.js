@@ -27,6 +27,8 @@ const { getDB } = require('../../services/database');
  *                 message:
  *                   type: string
  *                   example: Avatar deleted successfully
+ *       400:
+ *         description: Invalid avatar ID
  *       404:
  *         description: Avatar not found
  *       500:
@@ -34,6 +36,11 @@ const { getDB } = require('../../services/database');
  */
 const deleteAvatar = async (req, res) => {
     try {
+        // reject IDs that aren't valid MongoDB ObjectIds
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ error: 'Invalid avatar ID.' });
+        }
+        
         // get database
         const db = getDB();
 

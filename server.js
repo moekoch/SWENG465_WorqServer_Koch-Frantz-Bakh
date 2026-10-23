@@ -1,18 +1,37 @@
-// server.js
+//=================
+// load environment
+//=================
+
 require('dotenv').config();
-const express = require('express');
-const { connectDB } = require('./services/database');
 const PORT = 3000;
+
+//===================
+// configure database
+//===================
+
+const { connectDB } = require('./services/database');
 
 //===================
 // create express app
 //===================
 
+const express = require('express');
 const app = express();
 app.use(express.json());
 
+//===================
+// cors configuration
+//===================
+
 const cors = require('cors');
 app.use(cors({ origin: /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/ }));
+
+//=====================
+// socket configuration
+//=====================
+
+const http = require('http');
+const { initSocket } = require('./services/socket');
 
 //======================
 // swagger configuration
@@ -23,7 +42,7 @@ const swaggerJsdoc = require('swagger-jsdoc');
 
 const options = {
     definition: {
-        openapi: '3.0.0', // specifies openapi version
+        openapi: '3.0.0',
         info: {
             title: 'Worquarium API',
             version: '1.0.0',
@@ -92,6 +111,7 @@ const getUsers = require('./routes/users/getUsers');
 const getUser = require('./routes/users/getUser');
 const updateUser = require('./routes/users/updateUser');
 const deleteUser = require('./routes/users/deleteUser');
+const setMyAvatar = require('./routes/users/setMyAvatar');
 
 //=====================
 // create API endpoints
@@ -137,13 +157,16 @@ app.get('/api/users', getUsers);
 app.get('/api/users/:id', getUser);
 app.put('/api/users/:id', updateUser);
 app.delete('/api/users/me', requireAuth, deleteUser);
+app.patch('/api/users/me/avatar', requireAuth, setMyAvatar);
 
 //=================
 // start the server
 //=================
 connectDB()
     .then(() => {
-        app.listen(PORT, () => {
+        const server = http.createServer(app);
+        initSocket(server);
+        server.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
         });
     })

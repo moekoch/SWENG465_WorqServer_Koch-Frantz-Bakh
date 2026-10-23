@@ -26,7 +26,11 @@ const { getDB } = require('../../services/database');
  *               name:
  *                 type: string
  *                 description: The name of the avatar
- *                 example: Koi
+ *                 example: Blue Tang
+ *               imageKey:
+ *                 type: string
+ *                 description: Short unique ID the apps use to find the avatar's image
+ *                 example: blueTang
  *               color:
  *                 type: string
  *                 description: The color of the avatar
@@ -46,23 +50,44 @@ const { getDB } = require('../../services/database');
  *         description: No fields were provided or price has an invalid data type
  *       404:
  *         description: Avatar not found
+ *       409:
+ *         description: Another avatar already uses that imageKey
  *       500:
  *         description: Internal server error, failed to update avatar
  */
 const updateAvatar = async (req, res) => {
     try {
+        // reject IDs that aren't valid MongoDB ObjectIds
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ error: 'Invalid avatar ID.' });
+        }
+
         // extract fields from request body
-        const { name, color, price } = req.body;
+        const { name, color, price, imageKey } = req.body;
 
         // check that at least one field was provided
-        if (name === undefined && color === undefined && price === undefined) {
+        if (name === undefined && color === undefined && price === undefined && imageKey === undefined) {
             return res.status(400).json({error: 'At least one field must be provided.'});
         }
 
         // validate price if provided
-        if (price !== undefined && typeof price !== 'number') {
+        if (price !== undefined && (typeof price !== 'number' || price < 0)) {
             return res.status(400).json({
                 error: 'Invalid data type: price must be a number.'
+            });
+        }
+
+        // validate imageKey if provided
+        if (imageKey !== undefined && (typeof imageKey !== 'string' || !/^[A-Za-z0-9_-]+$/.test(imageKey))) {
+            return res.status(400).json({
+                error: 'Invalid imageKey: use only letters, numbers, - and _.'
+            });
+        }
+
+        // validate color if provided
+        if (color !== undefined && typeof color !== 'string') {
+            return res.status(400).json({
+                error: 'Invalid data type: color must be a string.'
             });
         }
 
@@ -72,15 +97,29 @@ const updateAvatar = async (req, res) => {
         // get avatars collection
         const avatars = db.collection('avatars');
 
+        // convert avatar's id for MongoDB
+        const id = new ObjectId(req.params.id);
+ 
+        // imageKey must stay unique across all other avatars
+        if (imageKey !== undefined) {
+            const taken = await avatars.findOne({ imageKey, _id: { $ne: id } });
+            if (taken) {
+                return res.status(409).json({
+                    error: 'Another avatar already uses that imageKey.'
+                });
+            }
+        }
+
         // add fields to updates if they are provided
         const updates = {};
         if (name !== undefined) updates.name = name;
+        if (imageKey !== undefined) updates.imageKey = imageKey;
         if (color !== undefined) updates.color = color;
         if (price !== undefined) updates.price = price;
 
         // update the avatar in the database
         const result = await avatars.updateOne(
-            { _id: new ObjectId(req.params.id) },
+            { _id: id },
             { $set: updates }
         );
 
@@ -92,9 +131,7 @@ const updateAvatar = async (req, res) => {
         }
 
         // retrieve the updated avatar
-        const updatedAvatar = await avatars.findOne({
-            _id: new ObjectId(req.params.id)
-        });
+        const updatedAvatar = await avatars.findOne({ _id: id });
 
         // return the updated avatar
         res.status(200).json(updatedAvatar);

@@ -28,7 +28,17 @@ JWT_SECRET=<secret>
 
 > **Note:** Never commit `.env` or expose your database credentials or JWT secret. Keep `.env.example` as a template without real credentials.
 
-### 2. Install Dependencies and Start the Server
+### 2. Seed Images
+
+To populate the database with the default avatar images, run the following command from the web application directory:
+
+```bash
+node scripts/seedAvatars.js
+```
+
+Run this script before starting the server to ensure the default avatar images are available in the application.
+
+### 3. Install Dependencies and Start the Server
 
 In a separate terminal, navigate to the web application directory and run:
 

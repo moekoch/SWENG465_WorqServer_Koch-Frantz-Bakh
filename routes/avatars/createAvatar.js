@@ -22,22 +22,40 @@ const { getDB } = require('../../services/database');
  *               $ref: '#/components/schemas/Avatar'
  *       400:
  *         description: Bad request, missing required fields or invalid data types
+ *       409:
+ *         description: An avatar with that imageKey already exists
  *       500:
  *         description: Internal server error, failed to create avatar
  */
 const createAvatar = async (req, res) => {
   //get data from request body
-  const { name, color, price } = req.body;
+  const { name, color, price, imageKey } = req.body;
 
-  // POST endpoint check to ensure the data sent from the client is valid
-  if(!name || !color || !price){ //validate required fields
+  // validate required fields
+  if(!name || !imageKey || !price){
     return res.status(400).json({
-      error: 'Missing required fields: name, color, and price are required.'
+      error: 'Missing required fields: name, imageKey, and price are required.'
     })
   }
-  if(typeof price !== 'number'){ //validate price is a number
+
+  // validate price is a number
+  if(typeof price !== 'number' || price < 0){
     return res.status(400).json({
       error: 'Invalid data type: price must be a number.'
+    })
+  }
+
+  // image key must only use letters, numbers, - and _
+  if(typeof imageKey !== 'string' || !/^[A-Za-z0-9_-]+$/.test(imageKey)){
+    return res.status(400).json({
+      error: 'Invalid imageKey: use only letters, numbers, - and _.'
+    })
+  }
+
+  // color is optional must be a string
+  if(color !== undefined && typeof color !== 'string'){
+    return res.status(400).json({
+      error: 'Invalid data type: color must be a string.'
     })
   }
 
@@ -49,12 +67,21 @@ const createAvatar = async (req, res) => {
     //get avatars collection
     const avatars = db.collection('avatars');
 
+    // imageKey must be unique
+    const existing = await avatars.findOne({ imageKey });
+    if(existing){
+      return res.status(409).json({
+        error: 'An avatar with that imageKey already exists.'
+      })
+    }
+
     //create avatar document
     const newAvatar = {
       name: name,
-      color: color,
+      imageKey: imageKey,
       price: price
     };
+    if(color !== undefined) newAvatar.color = color;
 
     //insert document into mongo
     const result = await avatars.insertOne(newAvatar);
