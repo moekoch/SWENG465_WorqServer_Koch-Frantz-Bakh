@@ -1,11 +1,13 @@
 const { ObjectId } = require('mongodb');
 const { getDB } = require('../../services/database');
+const { ownsAvatar } = require('../../services/shop');
 
 /**
  * @swagger
  * /api/users/me/avatar:
  *   patch:
  *     summary: Choose the logged-in user's avatar
+ *     description: The user must own the avatar (free avatars are owned by everyone)
  *     tags: [User]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -16,7 +18,7 @@ const { getDB } = require('../../services/database');
  *             type: object
  *             required: [avatarId]
  *             properties:
- *               avatarId: { type: string, example: 507f1f77bcf86cd799439011 }
+ *               avatarId: { type: string, example: 68e2f123456789abcdef1234 }
  *     responses:
  *       200:
  *         description: Avatar saved
@@ -24,6 +26,8 @@ const { getDB } = require('../../services/database');
  *         description: Invalid avatar id
  *       401:
  *         description: Not logged in
+ *       403:
+ *         description: The user doesn't own this avatar
  *       404:
  *         description: Avatar not found
  */
@@ -36,14 +40,19 @@ async function setMyAvatar(req, res) {
             return res.status(400).json({ error: 'Invalid avatar id.' });
         }
 
-        // avatar must exist
+        // check avatar exists
         const db = getDB();
         const avatar = await db.collection('avatars').findOne({ _id: new ObjectId(avatarId) });
         if (!avatar) {
             return res.status(404).json({ error: 'Avatar not found.' });
         }
 
-        // save on logged-in user
+        // users can only wear fish they own
+        if (!ownsAvatar(req.user, avatar)) {
+            return res.status(403).json({ error: 'You do not own this fish.' });
+        }
+
+        // save on the logged-in user
         await db.collection('users').updateOne(
             { _id: req.user._id },
             { $set: { avatarId: avatar._id } }

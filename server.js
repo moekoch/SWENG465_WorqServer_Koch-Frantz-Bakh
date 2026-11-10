@@ -76,6 +76,7 @@ const createAvatar = require('./routes/avatars/createAvatar');
 const getAvatar = require('./routes/avatars/getAvatar');
 const getAvatars = require('./routes/avatars/getAvatars');
 const updateAvatar = require('./routes/avatars/updateAvatar');
+const purchaseAvatar = require('./routes/avatars/purchaseAvatar');
 const deleteAvatar = require('./routes/avatars/deleteAvatar');
 
 // chat
@@ -108,6 +109,7 @@ const loginUser = require('./routes/users/loginUser');
 const createUser = require('./routes/users/createUser');
 const changePassword = require('./routes/users/changePassword');
 const getUsers = require('./routes/users/getUsers');
+const getMe = require('./routes/users/getMe');
 const getUser = require('./routes/users/getUser');
 const updateUser = require('./routes/users/updateUser');
 const deleteUser = require('./routes/users/deleteUser');
@@ -122,6 +124,7 @@ app.post('/api/avatars', createAvatar);
 app.get('/api/avatars/:id', getAvatar);
 app.get('/api/avatars', getAvatars);
 app.put('/api/avatars/:id', updateAvatar);
+app.post('/api/avatars/:id/purchase', requireAuth, purchaseAvatar);
 app.delete('/api/avatars/:id', deleteAvatar);
 
 // chat
@@ -154,6 +157,7 @@ app.post('/api/login', loginUser);
 app.post('/api/users', createUser);
 app.patch('/api/users/me/password', requireAuth, changePassword);
 app.get('/api/users', getUsers);
+app.get('/api/users/me', requireAuth, getMe);
 app.get('/api/users/:id', getUser);
 app.put('/api/users/:id', updateUser);
 app.delete('/api/users/me', requireAuth, deleteUser);
