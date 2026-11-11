@@ -1,3 +1,7 @@
+const dns = require('dns');
+
+dns.setServers(['8.8.8.8']);
+
 const { MongoClient } = require('mongodb');
 
 // create a MongoDB client using connection string
