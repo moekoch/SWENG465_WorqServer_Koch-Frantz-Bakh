@@ -47,16 +47,6 @@ http://localhost:3000
 
 <br>
 
-## Seed Images
-
-To populate the database with the default avatar images, run the following command from the web application directory:
-
-```bash
-node scripts/seedAvatars.js
-```
-
-Run this script before starting the server to ensure the default avatar images are available in the application.
-
 ## Swagger Documentation
 
 Once the server is running, view the API documentation at:
@@ -92,3 +82,17 @@ GET http://localhost:3000/api/avatars/123
 ```
 
 Keep `node server.js` running while testing requests in Postman.
+
+## Seed Images
+
+To populate the database with avatar images, run:
+
+```bash
+node scripts/seedAvatars.js
+```
+
+To populate the database with items images, run:
+
+```bash
+node scripts/seedItems.js
+```
