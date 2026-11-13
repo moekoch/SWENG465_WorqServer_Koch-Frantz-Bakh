@@ -4,7 +4,7 @@ const { connectDB, getDB } = require('../services/database');
 
 // one entry per item image in the apps (imageKey = image filename without .png)
 const ITEMS = [
-    { name: 'Headphones', imageKey: 'headphones', x: 100, y: 100, price: 500 },
+    { name: 'Headphones', imageKey: 'headphones', price: 500 },
 ];
 
 async function seed() {
