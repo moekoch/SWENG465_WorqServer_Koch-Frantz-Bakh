@@ -15,7 +15,7 @@ const { getDB } = require('../../services/database');
  *         description: The database ID of the item
  *         schema:
  *           type: string
- *           example: 68e2f123456789abcdef123
+ *           example: 6af72e8ef8242af8fcb834f9
  *     requestBody:
  *       required: true
  *       content:
