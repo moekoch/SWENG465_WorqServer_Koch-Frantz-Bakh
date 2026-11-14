@@ -1,11 +1,12 @@
 // points every user starts with
 const STARTING_POINTS = 1000;
 
-// user's points and owned fish
+// user's points and owned fish/items
 function readWallet(user) {
     return {
         points: user.points ?? STARTING_POINTS,
         ownedAvatarIds: (user.ownedAvatarIds ?? []).map(String),
+        ownedItemIds: (user.ownedItemIds ?? []).map(String),
     };
 }
 
