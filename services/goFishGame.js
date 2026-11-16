@@ -81,6 +81,7 @@ function createMatch(firstPlayer, secondPlayer) {
     const players = [firstPlayer, secondPlayer].map((player) => ({
         id: player.id,
         username: player.username,
+        avatarKey: player.avatarKey,
         hand: deck.splice(0, HAND_SIZE),
         books: [],
     }));
@@ -166,6 +167,7 @@ function getPlayerState(match, playerId) {
         opponent: {
             id: opponent.id,
             username: opponent.username,
+            avatarKey: opponent.avatarKey,
             cardCount: opponent.hand.length,
             books: opponent.books.length,
             connected: match.connectedUsers.get(opponent.id) === true,

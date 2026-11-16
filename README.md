@@ -83,6 +83,16 @@ GET http://localhost:3000/api/avatars/123
 
 Keep `node server.js` running while testing requests in Postman.
 
+## Go Fish multiplayer
+
+The authenticated Socket.IO server provides Go Fish matchmaking. Clients join
+the queue with `gofish:queue:join` and receive `gofish:lobby` updates containing
+other available players. A client starts a match for both queued players by
+emitting `gofish:player:select` with `{ playerId }`. The server validates that
+both players are still queued, then sends each player their private
+`gofish:state`. Game actions use `gofish:ask`; clients can leave the queue or
+forfeit an active match with `gofish:leave`.
+
 ## Seed Images
 
 To populate the database with avatar images, run:

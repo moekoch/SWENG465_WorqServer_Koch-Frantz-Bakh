@@ -6,6 +6,10 @@ const {
     createMatch,
     getPlayerState,
 } = require('./goFishGame');
+const {
+    getAvailablePlayers,
+    getSelectedOpponent,
+} = require('./goFishLobby');
 
 // fish shown if user hasn't picked one
 const DEFAULT_AVATAR_KEY = 'blueTang';
@@ -50,8 +54,59 @@ function clearGoFishTimer(match, userId) {
 }
 
 function removeFromGoFishQueue(userId, socketId) {
-    if (socketId && goFishQueue.get(userId) !== socketId) return;
+    if (socketId && goFishQueue.get(userId) !== socketId) return false;
+    return goFishQueue.delete(userId);
+}
+
+function emitGoFishLobby() {
+    for (const [userId, socketId] of goFishQueue) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (!socket?.connected) {
+            goFishQueue.delete(userId);
+            continue;
+        }
+
+        socket.emit(
+            'gofish:lobby',
+            getAvailablePlayers(goFishQueue, io.sockets.sockets, userId),
+        );
+    }
+}
+
+function startGoFishMatch(socket, playerId) {
+    const userId = String(socket.data.user._id);
+    const opponentSocket = getSelectedOpponent(
+        goFishQueue,
+        io.sockets.sockets,
+        socket,
+        playerId,
+    );
+    if (!opponentSocket) return false;
+
+    const opponentId = String(opponentSocket.data.user._id);
     goFishQueue.delete(userId);
+    goFishQueue.delete(opponentId);
+
+    const match = createMatch(
+        {
+            id: userId,
+            username: socket.data.user.username,
+            avatarKey: socket.data.user.goFishAvatarKey ?? DEFAULT_AVATAR_KEY,
+        },
+        {
+            id: opponentId,
+            username: opponentSocket.data.user.username,
+            avatarKey: opponentSocket.data.user.goFishAvatarKey ?? DEFAULT_AVATAR_KEY,
+        },
+    );
+    match.sockets = new Map();
+    match.disconnectTimers = new Map();
+    goFishMatches.set(match.id, match);
+
+    attachToGoFishMatch(socket, match);
+    attachToGoFishMatch(opponentSocket, match);
+    emitGoFishLobby();
+    return true;
 }
 
 function attachToGoFishMatch(socket, match) {
@@ -92,49 +147,18 @@ function joinGoFishQueue(socket) {
 
     const existingQueueSocketId = goFishQueue.get(userId);
     if (existingQueueSocketId === socket.id) {
-        socket.emit('gofish:waiting');
+        emitGoFishLobby();
         return;
     }
     removeFromGoFishQueue(userId);
 
-    let opponentSocket = null;
-    let opponentId = null;
-    for (const [queuedUserId, queuedSocketId] of goFishQueue) {
-        if (queuedUserId === userId) continue;
-
-        const candidate = io.sockets.sockets.get(queuedSocketId);
-        if (!candidate?.connected) {
-            removeFromGoFishQueue(queuedUserId, queuedSocketId);
-            continue;
-        }
-
-        opponentId = queuedUserId;
-        opponentSocket = candidate;
-        break;
-    }
-
-    if (!opponentSocket) {
-        goFishQueue.set(userId, socket.id);
-        socket.emit('gofish:waiting');
-        return;
-    }
-
-    removeFromGoFishQueue(opponentId, opponentSocket.id);
-    const match = createMatch(
-        { id: userId, username: socket.data.user.username },
-        { id: opponentId, username: opponentSocket.data.user.username },
-    );
-    match.sockets = new Map();
-    match.disconnectTimers = new Map();
-    goFishMatches.set(match.id, match);
-
-    attachToGoFishMatch(socket, match);
-    attachToGoFishMatch(opponentSocket, match);
+    goFishQueue.set(userId, socket.id);
+    emitGoFishLobby();
 }
 
 function leaveGoFish(socket) {
     const userId = String(socket.data.user._id);
-    removeFromGoFishQueue(userId, socket.id);
+    if (removeFromGoFishQueue(userId, socket.id)) emitGoFishLobby();
 
     const matchId = socket.data.goFishMatchId || goFishMatchByPlayer.get(userId);
     const match = matchId && goFishMatches.get(matchId);
@@ -168,7 +192,7 @@ function leaveGoFish(socket) {
 
 function handleGoFishDisconnect(socket) {
     const userId = String(socket.data.user._id);
-    removeFromGoFishQueue(userId, socket.id);
+    if (removeFromGoFishQueue(userId, socket.id)) emitGoFishLobby();
 
     const match = socket.data.goFishMatchId && goFishMatches.get(socket.data.goFishMatchId);
     if (!match || match.sockets.get(userId) !== socket.id) return;
@@ -311,9 +335,44 @@ function initSocket(httpServer) {
         socket.on('session:leave', () => leaveSession(socket));
 
         // client wants to play Go Fish
-        socket.on('gofish:queue:join', (acknowledge) => {
-            joinGoFishQueue(socket);
-            if (typeof acknowledge === 'function') acknowledge({ ok: true });
+        socket.on('gofish:queue:join', async (acknowledge) => {
+            try {
+                if (!socket.data.user.goFishAvatarKey) {
+                    const avatar = socket.data.user.avatarId
+                        ? await getDB().collection('avatars').findOne({
+                            _id: socket.data.user.avatarId,
+                        })
+                        : null;
+                    socket.data.user.goFishAvatarKey =
+                        avatar?.imageKey ?? DEFAULT_AVATAR_KEY;
+                }
+
+                if (!socket.connected) return;
+                if (typeof acknowledge === 'function') {
+                    acknowledge({ ok: true, protocol: 'select-opponent-v1' });
+                }
+                joinGoFishQueue(socket);
+            } catch (error) {
+                console.error('Error joining Go Fish matchmaking:', error);
+                if (typeof acknowledge === 'function') {
+                    acknowledge({
+                        ok: false,
+                        protocol: 'select-opponent-v1',
+                        message: 'Could not load your player profile.',
+                    });
+                }
+            }
+        });
+        socket.on('gofish:player:select', (payload, acknowledge) => {
+            const started = startGoFishMatch(socket, payload?.playerId);
+            if (!started) {
+                socket.emit('gofish:error', {
+                    message: 'That player is no longer available. Choose someone else.',
+                });
+            }
+            if (typeof acknowledge === 'function') {
+                acknowledge({ ok: started });
+            }
         });
         socket.on('gofish:ask', (payload) => {
             const match = socket.data.goFishMatchId &&
