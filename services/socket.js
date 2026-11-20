@@ -813,4 +813,26 @@ function disconnectUser(userId) {
     if (io) io.in(userRoom(String(userId))).disconnectSockets(true);
 }
 
-module.exports = { initSocket, disconnectUser };
+// change fish a connected user is shown with and tell everyone in session
+function updatePlayerAvatar(userId, avatarKey) {
+    if (!io) return;
+
+    // every connection user has
+    const socketIds = io.sockets.adapter.rooms.get(userRoom(String(userId))) ?? [];
+    for (const socketId of socketIds) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (!socket) continue;
+
+        // games read cached keys when player joins match
+        socket.data.user.avatarKey = avatarKey;
+        socket.data.user.goFishAvatarKey = avatarKey;
+
+        // change fish in session and tell room
+        const { player, sessionId } = socket.data;
+        if (!player || !sessionId) continue;
+        player.avatarKey = avatarKey;
+        io.to(sessionRoom(sessionId)).emit('player:avatar', { id: player.id, avatarKey });
+    }
+}
+
+module.exports = { initSocket, disconnectUser, updatePlayerAvatar };

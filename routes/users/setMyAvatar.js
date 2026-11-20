@@ -1,6 +1,7 @@
 const { ObjectId } = require('mongodb');
 const { getDB } = require('../../services/database');
 const { ownsAvatar } = require('../../services/shop');
+const { updatePlayerAvatar } = require('../../services/socket');
 
 /**
  * @swagger
@@ -57,6 +58,9 @@ async function setMyAvatar(req, res) {
             { _id: req.user._id },
             { $set: { avatarId: avatar._id } }
         );
+
+        // change fish shown in session and tell everyone
+        updatePlayerAvatar(String(req.user._id), avatar.imageKey);
 
         res.json({ avatarId: avatar._id, imageKey: avatar.imageKey });
     } catch (error) {
