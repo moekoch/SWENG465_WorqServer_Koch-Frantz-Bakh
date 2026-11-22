@@ -53,7 +53,17 @@ const options = {
                 url: `http://localhost:${PORT}`,
                 description: 'development server'
             }
-        ]
+        ],
+        // lets swagger send the login token on routes marked with security: bearerAuth
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT'
+                }
+            }
+        }
     },
     apis: ['./routes/**/*.js'] // paths to files containing api definitions
 };
