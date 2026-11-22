@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const { getDB } = require('./database');
 const { verifyToken } = require('./auth');
+const { randomUUID } = require('node:crypto');
 const {
     applyAsk,
     createMatch,
