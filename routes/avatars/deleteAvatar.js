@@ -8,6 +8,7 @@ const { getDB } = require('../../services/database');
  *     summary: Delete an avatar
  *     description: Deletes an avatar by its ID
  *     tags: [Avatar]
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
@@ -58,6 +59,11 @@ const deleteAvatar = async (req, res) => {
                 error: 'Avatar not found.'
             });
         }
+
+        // take it away from everyone who owned it, and from anyone wearing it
+        const avatarId = new ObjectId(req.params.id);
+        await db.collection('users').updateMany({}, { $pull: { ownedAvatarIds: avatarId } });
+        await db.collection('users').updateMany({ avatarId }, { $unset: { avatarId: '' } });
 
         // send ok status and message of success
         res.status(200).json({message: 'Avatar deleted successfully.'});

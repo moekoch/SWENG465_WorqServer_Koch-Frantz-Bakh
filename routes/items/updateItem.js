@@ -8,6 +8,7 @@ const { getDB } = require('../../services/database');
  *     summary: Update an item
  *     description: Updates one or more fields of an existing item.
  *     tags: [Item]
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
@@ -31,6 +32,10 @@ const { getDB } = require('../../services/database');
  *                 type: number
  *                 description: The price of the item
  *                 example: 100
+ *               imageKey:
+ *                 type: string
+ *                 description: Short ID apps use to find the item's image
+ *                 example: headphones
  *     responses:
  *       200:
  *         description: Item updated successfully
@@ -48,15 +53,18 @@ const { getDB } = require('../../services/database');
 const updateItem = async (req, res) => {
     try {
         // extract fields from request body
-        const { name, price } = req.body;
+        const { name, price, imageKey } = req.body ?? {};
 
         // check that at least one field was provided
-        if (name === undefined && price === undefined) {
+        if (name === undefined && price === undefined && imageKey === undefined) {
             return res.status(400).json({error: 'At least one field must be provided.'});
         }
 
+        if (imageKey !== undefined && (typeof imageKey !== 'string' || !/^[A-Za-z0-9_-]+$/.test(imageKey))) {
+            return res.status(400).json({error: 'Invalid imageKey: use only letters, numbers, - and _.'});
+        }
         // validate price if provided
-        if (price !== undefined && typeof price !== 'number') {
+        if (price !== undefined && (typeof price !== 'number' || price < 0)) {
             return res.status(400).json({
                 error: 'Invalid data type: price must be a number.'
             });
@@ -69,9 +77,13 @@ const updateItem = async (req, res) => {
         const items = db.collection('items');
 
         // add fields to updates if they are provided
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({error: 'Invalid item ID.'});
+        }
         const updates = {};
         if (name !== undefined) updates.name = name;
         if (price !== undefined) updates.price = price;
+        if (imageKey !== undefined) updates.imageKey = imageKey;
 
         // update the item in the database
         const result = await items.updateOne(

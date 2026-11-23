@@ -8,6 +8,7 @@ const { getDB } = require('../../services/database');
  *     summary: Delete an item
  *     description: Deletes an item by its ID
  *     tags: [Item]
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
@@ -34,6 +35,11 @@ const { getDB } = require('../../services/database');
  */
 const deleteItem = async (req, res) => {
     try {
+        // reject IDs that aren't valid MongoDB ObjectIds
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ error: 'Invalid item ID.' });
+        }
+
         // get database
         const db = getDB();
 
@@ -51,6 +57,13 @@ const deleteItem = async (req, res) => {
                 error: 'Item not found.'
             });
         }
+
+        // take it away from everyone who owned it or had it in their tank
+        const itemId = new ObjectId(req.params.id);
+        await db.collection('users').updateMany(
+            {},
+            { $pull: { ownedItemIds: itemId }, $unset: { [`tank.layout.${itemId}`]: '' } }
+        );
 
         // send ok status and message of success
         res.status(200).json({message: 'Item deleted successfully.'});

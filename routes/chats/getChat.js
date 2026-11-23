@@ -1,59 +1,38 @@
-const { ObjectId } = require('mongodb');
-const { getDB } = require('../../services/database');
+const { getAccessibleChat } = require('../../services/chatAccess');
+const { route } = require('../../services/http');
 
 /**
  * @swagger
  * /api/chats/{id}:
  *   get:
  *     summary: Get a chat
- *     description: Retrieves a chat channel by its ID.
+ *     description: Public rooms are open to everyone. Direct and group chats only to the people in them.
  *     tags: [Chat]
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         description: The database ID of the chat
  *         schema:
  *           type: string
- *           example: 68e2f123456789abcdef123
  *     responses:
  *       200:
- *         description: Chat retrieved successfully
+ *         description: The chat
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Chat'
+ *       400:
+ *         description: Invalid ID
+ *       401:
+ *         description: Not logged in
  *       404:
  *         description: Chat not found
- *       500:
- *         description: Internal server error, failed to retrieve chat
  */
-const getChat = async (req, res) => {
-    try {
-        // get database
-        const db = getDB();
-
-        // get chat collection
-        const chats = db.collection('chats');
-
-        // retrieve chat by ID
-        const chat = await chats.findOne({
-            _id: new ObjectId(req.params.id)
-        });
-
-        // check if chat exists
-        if (!chat) {
-            return res.status(404).json({
-                error: 'Chat not found.'
-            });
-        }
-
-        // return ok status and chat data
-        res.status(200).json(chat);
-    } catch (error) {
-        console.error('Error retrieving chat:', error);
-        res.status(500).json({error: 'Failed to retrieve chat.'});
-    }
-};
+const getChat = route('Failed to retrieve chat.', async (req, res) => {
+    const { chat, status, error } = await getAccessibleChat(req.user, req.params.id);
+    if (error) return res.status(status).json({ error });
+    res.status(200).json(chat);
+});
 
 module.exports = getChat;

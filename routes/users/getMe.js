@@ -22,6 +22,8 @@ async function getMe(req, res) {
         id: user._id,
         username: user.username,
         email: user.email,
+        role: user.role ?? 'user',
+        status: user.status ?? 'active',
         avatarId: user.avatarId ? String(user.avatarId) : null,
         ...readWallet(user),
     });

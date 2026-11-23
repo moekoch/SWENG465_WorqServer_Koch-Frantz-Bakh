@@ -1,7 +1,11 @@
+const { randomUUID } = require('crypto');
 const { Server } = require('socket.io');
 const { getDB } = require('./database');
 const { verifyToken } = require('./auth');
-const { randomUUID } = require('node:crypto');
+const { getRoomChat, submitMessage } = require('./chat');
+const { blockedIdsOf, friendIdsOf } = require('./social');
+const { settingsOf } = require('./settings');
+const { recordMatchResults } = require('./gameResults');
 const {
     applyAsk,
     createMatch,
@@ -24,6 +28,7 @@ const DEFAULT_AVATAR_KEY = 'blueTang';
 // ignore move events that arrive faster than this
 const MIN_MOVE_INTERVAL_MS = 50;
 
+
 // socket.io server created in initSocket
 let io = null;
 
@@ -31,6 +36,90 @@ let io = null;
 const userRoom = (userId) => `user:${userId}`;
 const sessionRoom = (sessionId) => `session:${sessionId}`;
 const goFishRoom = (matchId) => `gofish:${matchId}`;
+
+// ---------- who is connected, and talking to one user ----------
+
+// true if the user has a live connection right now
+function isUserOnline(userId) {
+    const room = io?.sockets.adapter.rooms.get(userRoom(String(userId)));
+    return Boolean(room && room.size > 0);
+}
+
+// send an event to one user (does nothing if they are offline or the socket server isn't running)
+function emitToUser(userId, event, payload) {
+    io?.to(userRoom(String(userId))).emit(event, payload);
+}
+
+// how many fish are in each session: { main: 3, ... }
+function sessionCounts() {
+    const counts = {};
+    if (!io) return counts;
+    for (const [roomName, sockets] of io.sockets.adapter.rooms) {
+        if (roomName.startsWith('session:')) counts[roomName.slice('session:'.length)] = sockets.size;
+    }
+    return counts;
+}
+
+// reload who a connected user has blocked (after they block or unblock someone)
+async function refreshBlocks(userId) {
+    if (!io) return;
+    const blocked = await blockedIdsOf(userObjectId(userId));
+    for (const socketId of io.sockets.adapter.rooms.get(userRoom(String(userId))) ?? []) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) socket.data.blocked = blocked;
+    }
+}
+
+// the id as stored in the database
+function userObjectId(userId) {
+    const { ObjectId } = require('mongodb');
+    return userId instanceof ObjectId ? userId : new ObjectId(String(userId));
+}
+
+// give a saved chat message to everyone in the sender's session, except people who blocked the
+// sender (or whom the sender blocked)
+function deliverChatMessage(senderSocket, message) {
+    const senderId = String(message.userID);
+    const senderBlocked = senderSocket.data.blocked ?? new Set();
+    const payload = {
+        id: senderId,
+        messageId: String(message._id),
+        username: message.username,
+        text: message.body,
+        at: message.sentAt.getTime(),
+    };
+
+    for (const socketId of io.sockets.adapter.rooms.get(sessionRoom(senderSocket.data.sessionId)) ?? []) {
+        const target = io.sockets.sockets.get(socketId);
+        if (!target) continue;
+        const targetId = String(target.data.user._id);
+        const hidden = targetId !== senderId && (target.data.blocked?.has(senderId) || senderBlocked.has(targetId));
+        if (!hidden) target.emit('chat:message', payload);
+    }
+}
+
+// tell a user's friends they just came online or went offline (so the Friends panel updates live)
+async function announcePresence(user) {
+    try {
+        const online = isUserOnline(user._id) && settingsOf(user).onlineStatus !== 'nobody';
+        for (const friendId of await friendIdsOf(user._id)) {
+            emitToUser(friendId, 'friend:presence', { userId: String(user._id), online });
+        }
+    } catch (error) {
+        console.error('Could not announce presence:', error);
+    }
+}
+
+// a finished Go Fish match counts toward each player's record (once)
+function recordGoFishResults(match) {
+    if (match.resultsRecorded) return;
+    match.resultsRecorded = true;
+    const outcomeFor = (playerId) => (match.winnerId == null ? 'draw' : match.winnerId === playerId ? 'win' : 'loss');
+    recordMatchResults({
+        game: 'go-fish',
+        players: match.players.map((player) => ({ id: player.id, outcome: outcomeFor(player.id) })),
+    }).catch((error) => console.error('Could not record Go Fish result:', error));
+}
 
 const goFishQueue = new Map();
 const goFishMatches = new Map();
@@ -296,7 +385,10 @@ function handleSpadesDisconnect(socket) {
 }
 
 function emitGoFishState(match) {
-    if (match.status === 'finished') clearGoFishTimer(match);
+    if (match.status === 'finished') {
+        clearGoFishTimer(match);
+        recordGoFishResults(match);
+    }
 
     for (const player of match.players) {
         const socketId = match.sockets.get(player.id);
@@ -527,6 +619,14 @@ function initSocket(httpServer) {
         io.in(userRoom(id)).disconnectSockets(true);
         socket.join(userRoom(id));
 
+        // who this user has blocked (chat from them is never shown)
+        socket.data.blocked = new Set();
+        blockedIdsOf(user._id)
+            .then((blocked) => { socket.data.blocked = blocked; })
+            .catch((error) => console.error('Could not load blocked users:', error));
+
+        announcePresence(user);
+
         // client wants to be in session
         socket.on('session:join', async (payload) => {
             try {
@@ -538,6 +638,13 @@ function initSocket(httpServer) {
 
                 // leave the old session first
                 leaveSession(socket);
+
+                // rooms with a size limit can be full
+                const sessionDoc = await getDB().collection('sessions').findOne({ slug: sessionId });
+                const roomSize = io.sockets.adapter.rooms.get(sessionRoom(sessionId))?.size ?? 0;
+                if (sessionDoc?.capacity && roomSize >= sessionDoc.capacity) {
+                    return socket.emit('session:error', { error: 'This room is full.' });
+                }
 
                 // look up user's fish on server
                 const avatar = user.avatarId
@@ -594,6 +701,40 @@ function initSocket(httpServer) {
                 x: player.x,
                 y: player.y,
             });
+        });
+
+        // client said something to everyone in their session. The message is filtered and saved
+        // first (see services/chat.js); only a clean message is shown to anyone.
+        socket.on('chat:send', async (payload, acknowledge) => {
+            // the client waits for this answer
+            const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
+
+            try {
+                if (!socket.data.player || !socket.data.sessionId) {
+                    return reply({ ok: false, code: 'NOT_IN_ROOM', error: 'Join the room first.' });
+                }
+
+                const chat = await getRoomChat(socket.data.sessionId);
+                const result = await submitMessage({
+                    user,
+                    chat,
+                    text: typeof payload?.text === 'string' ? payload.text : '',
+                });
+
+                if (!result.ok) {
+                    // tell the user when a chat break starts, so the chat bar can say so
+                    if (result.code === 'MUTED') {
+                        socket.emit('moderation:muted', { until: result.until, error: result.error });
+                    }
+                    return reply({ ok: false, code: result.code, error: result.error, until: result.until });
+                }
+
+                deliverChatMessage(socket, result.message);
+                reply({ ok: true, messageId: String(result.message._id) });
+            } catch (error) {
+                console.error('Error sending chat message:', error);
+                reply({ ok: false, error: 'Could not send that message.' });
+            }
         });
 
         // client left session screen
@@ -803,6 +944,7 @@ function initSocket(httpServer) {
             leaveSession(socket)
             handleGoFishDisconnect(socket);
             handleSpadesDisconnect(socket);
+            announcePresence(user);
         });
     });
 
@@ -836,4 +978,12 @@ function updatePlayerAvatar(userId, avatarKey) {
     }
 }
 
-module.exports = { initSocket, disconnectUser, updatePlayerAvatar };
+module.exports = {
+    initSocket,
+    disconnectUser,
+    updatePlayerAvatar,
+    isUserOnline,
+    emitToUser,
+    sessionCounts,
+    refreshBlocks,
+};

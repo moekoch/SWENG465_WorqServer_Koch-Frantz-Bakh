@@ -8,6 +8,7 @@ const { getDB } = require('../../services/database');
  *     summary: Update an avatar
  *     description: Updates one or more fields of an existing avatar.
  *     tags: [Avatar]
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id

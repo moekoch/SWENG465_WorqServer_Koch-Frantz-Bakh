@@ -1,12 +1,16 @@
 const { getDB } = require('../../services/database');
+const { checkName } = require('../../services/moderationStore');
+const { SLUG_PATTERN, describeSessions } = require('../../services/sessions');
+const { route } = require('../../services/http');
 
 /**
  * @swagger
  * /api/sessions:
  *   post:
- *     summary: Create a new session
- *     description: Creates a new session and stores it in the database
+ *     summary: Create a session (moderators)
+ *     description: Adds a room fish can swim in. Names and descriptions are filtered.
  *     tags: [Session]
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
@@ -15,57 +19,42 @@ const { getDB } = require('../../services/database');
  *             $ref: '#/components/schemas/Session'
  *     responses:
  *       201:
- *         description: Session created successfully
+ *         description: Session created
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Session'
  *       400:
- *         description: Bad request, missing required fields or invalid data types
- *       500:
- *         description: Internal server error, failed to create session
+ *         description: Missing or invalid fields, or a name the filter refused
+ *       401:
+ *         description: Not logged in
+ *       403:
+ *         description: Moderators only
+ *       409:
+ *         description: A session with that slug already exists
  */
-const createSession = async (req, res) => {
-  //get data from request body
-  const { id } = req.body;
+const createSession = route('Failed to create session.', async (req, res) => {
+    const { slug, name, description, capacity = 50 } = req.body ?? {};
+    if (typeof slug !== 'string' || !SLUG_PATTERN.test(slug)) {
+        return res.status(400).json({ error: 'slug must be 2 to 32 lowercase letters, numbers or -.' });
+    }
+    if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'Missing required field: name.' });
+    if (!Number.isInteger(capacity) || capacity < 2 || capacity > 200) return res.status(400).json({ error: 'capacity must be a whole number from 2 to 200.' });
 
-  // POST endpoint check to ensure the data sent from the client is valid
-  if(!id){ //validate required fields
-    return res.status(400).json({
-      error: 'Missing required field: id is required.'
-    })
-  }
-  if(typeof id !== 'number'){ //validate id is a number
-    return res.status(400).json({
-      error: 'Invalid data type: id must be a number.'
-    })
-  }
+    const nameCheck = await checkName(name, { kind: 'name', maxLength: 40 });
+    if (!nameCheck.allowed) return res.status(400).json({ error: nameCheck.reason, code: 'MODERATED' });
+    const session = { slug, name: nameCheck.text, capacity, createdBy: req.user._id, createdAt: new Date() };
+    if (description !== undefined) {
+        if (typeof description !== 'string') return res.status(400).json({ error: 'description must be text.' });
+        const descriptionCheck = await checkName(description, { kind: 'name', maxLength: 120 });
+        if (!descriptionCheck.allowed) return res.status(400).json({ error: descriptionCheck.reason, code: 'MODERATED' });
+        session.description = descriptionCheck.text;
+    }
 
-  //create a new session object
-  try{
-    //get database
-    const db = getDB();
-
-    //get sessions collection
-    const sessions = db.collection('sessions');
-
-    //create session document
-    const newSession = {
-      id: id
-    };
-
-    //insert document into mongo
-    const result = await sessions.insertOne(newSession);
-
-    //add mongo generated id to response
-    newSession._id = result.insertedId;
-
-    //respond with created status and new session
-    res.status(201).json(newSession);
-  } catch (error) {
-    console.error('Error creating session:', error);
-    res.status(500).json({error: 'Failed to create session.'});
-  }
-};
+    const sessions = getDB().collection('sessions');
+    if (await sessions.findOne({ slug })) return res.status(409).json({ error: 'A session with that slug already exists.' });
+    session._id = (await sessions.insertOne(session)).insertedId;
+    res.status(201).json((await describeSessions([session]))[0]);
+});
 
 module.exports = createSession;

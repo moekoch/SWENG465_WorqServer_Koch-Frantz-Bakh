@@ -30,6 +30,9 @@ const { getDB } = require('../../services/database');
  */
 const getItem = async (req, res) => {
     try {
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ error: 'Invalid item ID.' });
+        }
         // get database
         const db = getDB();
 

@@ -1,63 +1,49 @@
-const { ObjectId } = require('mongodb');
 const { getDB } = require('../../services/database');
+const { getAccessibleChat } = require('../../services/chatAccess');
+const { hasRole } = require('../../services/auth');
+const { route } = require('../../services/http');
 
 /**
  * @swagger
  * /api/chats/{id}:
  *   delete:
- *     summary: Delete a chat
- *     description: Deletes a chat channel by its ID.
+ *     summary: Delete a chat and its messages
+ *     description: Either person in a direct chat can delete it. A group chat can be deleted by the person who made it. Public rooms can only be deleted by admins.
  *     tags: [Chat]
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         description: The database ID of the chat
  *         schema:
  *           type: string
- *           example: 68e2f123456789abcdef123
  *     responses:
  *       200:
- *         description: Chat deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Chat deleted successfully.
+ *         description: Chat deleted
+ *       400:
+ *         description: Invalid ID
+ *       401:
+ *         description: Not logged in
+ *       403:
+ *         description: Not allowed to delete this chat
  *       404:
  *         description: Chat not found
- *       500:
- *         description: Internal server error, failed to delete chat
  */
-const deleteChat = async (req, res) => {
-    try {
-        // get database
-        const db = getDB();
+const deleteChat = route('Failed to delete chat.', async (req, res) => {
+    const { chat, status, error } = await getAccessibleChat(req.user, req.params.id);
+    if (error) return res.status(status).json({ error });
 
-        // get chat collection
-        const chats = db.collection('chats');
+    const isOwner = String(chat.createdBy) === String(req.user._id);
+    const allowed =
+        chat.type === 'direct' ||
+        (chat.type === 'group' && isOwner) ||
+        (chat.type === 'room' && hasRole(req.user, 'admin'));
+    if (!allowed) return res.status(403).json({ error: 'You are not allowed to delete this chat.' });
 
-        // delete chat by ID
-        const result = await chats.deleteOne({
-            _id: new ObjectId(req.params.id)
-        });
-
-        // check if any document was deleted
-        if (result.deletedCount === 0) {
-            return res.status(404).json({
-                error: 'Chat not found.'
-            });
-        }
-
-        // send ok status and message of success
-        res.status(200).json({message: 'Chat deleted successfully.'});
-    } catch (error) {
-        console.error('Error deleting chat:', error);
-        res.status(500).json({error: 'Failed to delete chat.'});
-    }
-};
+    const db = getDB();
+    await db.collection('messages').deleteMany({ chatID: chat._id });
+    await db.collection('chats').deleteOne({ _id: chat._id });
+    res.status(200).json({ message: 'Chat deleted successfully.' });
+});
 
 module.exports = deleteChat;

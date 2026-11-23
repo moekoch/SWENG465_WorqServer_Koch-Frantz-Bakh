@@ -8,6 +8,9 @@ if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not set in the environment');
 }
 
+// how powerful each role is: moderators can do everything users can, admins everything moderators can
+const ROLE_RANK = { user: 0, moderator: 1, admin: 2 };
+
 // create signed token that holds user's id and expires in 7 days
 function signToken(userId) {
     return jwt.sign({ sub: String(userId) }, JWT_SECRET, {
@@ -16,7 +19,7 @@ function signToken(userId) {
     });
 }
 
-// check token and return user
+// check token and return user (null if the token is bad or the account is banned)
 async function verifyToken(token) {
     let payload;
     try {
@@ -28,9 +31,28 @@ async function verifyToken(token) {
 
     if (!ObjectId.isValid(payload.sub)) return null;
 
-    return getDB()
+    const user = await getDB()
         .collection('users')
         .findOne({ _id: new ObjectId(payload.sub) }, { projection: { passwordHash: 0 } });
+
+    // banned accounts can't use an old token to get back in
+    if (user?.status === 'banned') return null;
+    return user;
+}
+
+// "user" | "moderator" | "admin" (accounts made before roles existed are users)
+function roleOf(user) {
+    return ROLE_RANK[user?.role] !== undefined ? user.role : 'user';
+}
+
+// true if the user's role is at least the given one
+function hasRole(user, role) {
+    return ROLE_RANK[roleOf(user)] >= ROLE_RANK[role];
+}
+
+// moderators and admins
+function isStaff(user) {
+    return hasRole(user, 'moderator');
 }
 
 // express middleware: let request through only if token valid
@@ -46,6 +68,11 @@ async function requireAuth(req, res, next) {
             return res.status(401).json({ error: 'Not logged in.', code: 'UNAUTHENTICATED' });
         }
 
+        // suspended accounts can read but not act: they are stopped at login and here
+        if (user.status === 'suspended') {
+            return res.status(403).json({ error: 'This account is suspended.', code: 'ACCOUNT_SUSPENDED' });
+        }
+
         // routes read logged-in user from here not URL or body
         req.user = user;
         next();
@@ -55,4 +82,14 @@ async function requireAuth(req, res, next) {
     }
 }
 
-module.exports = { signToken, verifyToken, requireAuth };
+// express middleware (use after requireAuth): only users with at least this role get through
+function requireRole(role) {
+    return (req, res, next) => {
+        if (!hasRole(req.user, role)) {
+            return res.status(403).json({ error: 'You do not have permission to do that.', code: 'FORBIDDEN' });
+        }
+        next();
+    };
+}
+
+module.exports = { signToken, verifyToken, requireAuth, requireRole, hasRole, isStaff, roleOf };

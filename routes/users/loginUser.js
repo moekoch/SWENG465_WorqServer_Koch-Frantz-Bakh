@@ -40,6 +40,13 @@ async function loginUser(req, res) {
         if (!ok) {
             return res.status(401).json({ error: 'Invalid username or password' });
         }
+        // banned and suspended accounts can't log in
+        if (user.status === 'banned' || user.status === 'suspended') {
+            return res.status(403).json({
+                error: user.status === 'banned' ? 'This account has been banned.' : 'This account is suspended.',
+                code: 'ACCOUNT_SUSPENDED',
+            });
+        }
 
         // never send the hash back
         res.json({

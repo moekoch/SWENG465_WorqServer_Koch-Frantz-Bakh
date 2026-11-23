@@ -2,46 +2,36 @@
  * @swagger
  * tags:
  *   - name: Chat
- *     description: API endpoints for managing chats
+ *     description: Chat rooms and private chats. The public room chat is also available live over the socket (chat:send).
  */
-
-/**
- * @swagger
- * tags:
- *   - name: Chat
- *     description: API endpoints for managing chats
- */
-
 /**
  * @swagger
  * components:
  *   schemas:
  *     Chat:
  *       type: object
- *       required:
- *         - name
- *         - createdAt
- *         - participants
  *       properties:
  *         _id:
  *           type: string
- *           description: MongoDB generated ID
- *           example: 68e2f123456789abcdef123
+ *         type:
+ *           type: string
+ *           enum: [room, direct, group]
  *         name:
  *           type: string
- *           description: Name of the chat or co-work session
- *           example: Study Session
+ *         slug:
+ *           type: string
+ *           description: Only for public rooms, matches the session name (for example main)
+ *         participants:
+ *           type: array
+ *           description: Empty for public rooms
+ *           items:
+ *             type: string
+ *         createdBy:
+ *           type: string
  *         createdAt:
  *           type: string
  *           format: date-time
- *           description: Date and time the chat was created
- *           example: 2026-10-04T18:30:00.000Z
- *         participants:
- *           type: array
- *           description: Users participating in the chat
- *           items:
- *             type: string
- *           example:
- *             - 68e2f555555555abcdef789
- *             - 68e2f666666666abcdef890
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
  */

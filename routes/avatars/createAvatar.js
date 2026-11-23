@@ -7,6 +7,7 @@ const { getDB } = require('../../services/database');
  *     summary: Create a new avatar
  *     description: Creates a new avatar and stores it in the database
  *     tags: [Avatar]
+ *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:

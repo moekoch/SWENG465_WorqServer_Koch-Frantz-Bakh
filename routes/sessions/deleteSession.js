@@ -1,63 +1,46 @@
-const { ObjectId } = require('mongodb');
 const { getDB } = require('../../services/database');
+const { findSession } = require('../../services/sessions');
+const { route } = require('../../services/http');
 
 /**
  * @swagger
  * /api/sessions/{id}:
  *   delete:
- *     summary: Delete a session
- *     description: Deletes a session by their ID
+ *     summary: Delete a session (admins)
+ *     description: Removes the room and its public chat history. The main session can't be deleted.
  *     tags: [Session]
+ *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         description: The database ID of the session
  *         schema:
  *           type: string
- *           example: 507f1f77bcf86cd799439011
  *     responses:
  *       200:
- *         description: Session deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Session deleted successfully
+ *         description: Session deleted
+ *       400:
+ *         description: The main session can't be deleted
+ *       401:
+ *         description: Not logged in
+ *       403:
+ *         description: Admins only
  *       404:
  *         description: Session not found
- *       500:
- *         description: Internal server error, failed to delete session
  */
-const deleteSession = async (req, res) => {
-    try {
-        // get database
-        const db = getDB();
+const deleteSession = route('Failed to delete session.', async (req, res) => {
+    const session = await findSession(req.params.id);
+    if (!session) return res.status(404).json({ error: 'Session not found.' });
+    if (session.slug === 'main') return res.status(400).json({ error: 'The main session can\'t be deleted.' });
 
-        // get sessions collection
-        const sessions = db.collection('sessions');
-
-        // delete the session by ID
-        const result = await sessions.deleteOne({
-            _id: new ObjectId(req.params.id)
-        });
-
-        // check if any document was deleted
-        if (result.deletedCount === 0) {
-            return res.status(404).json({
-                error: 'Session not found.'
-            });
-        }
-
-        // send ok status and message of success
-        res.status(200).json({message: 'Session deleted successfully.'});
-    } catch (error) {
-        console.error('Error deleting session:', error);
-        res.status(500).json({error: 'Failed to delete session.'});
+    const db = getDB();
+    const chat = await db.collection('chats').findOne({ type: 'room', slug: session.slug });
+    if (chat) {
+        await db.collection('messages').deleteMany({ chatID: chat._id });
+        await db.collection('chats').deleteOne({ _id: chat._id });
     }
-};
+    await db.collection('sessions').deleteOne({ _id: session._id });
+    res.status(200).json({ message: 'Session deleted successfully.' });
+});
 
 module.exports = deleteSession;

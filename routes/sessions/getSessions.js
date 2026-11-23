@@ -1,11 +1,13 @@
 const { getDB } = require('../../services/database');
+const { describeSessions } = require('../../services/sessions');
+const { route } = require('../../services/http');
 
 /**
  * @swagger
  * /api/sessions:
  *   get:
  *     summary: Get all sessions
- *     description: Retrieves a list of all sessions from the database
+ *     description: Lists the rooms with how many fish are in each right now.
  *     tags: [Session]
  *     responses:
  *       200:
@@ -19,23 +21,9 @@ const { getDB } = require('../../services/database');
  *       500:
  *         description: Internal server error, failed to retrieve sessions
  */
-const getSessions = async (req, res) => {
-  try {
-    //get database
-    const db = getDB();
-
-    //get sessions collection
-    const sessions = db.collection('sessions');
-
-    // retrieve all sessions from mongo
-    const results = await sessions.find({}).toArray();
-
-    // return ok status and array of sessions
-    res.status(200).json(results);
-  } catch (error) {
-    console.error('Error retrieving sessions:', error);
-    res.status(500).json({error: 'Failed to retrieve sessions.'});
-  }
-};
+const getSessions = route('Failed to retrieve sessions.', async (req, res) => {
+    const sessions = await getDB().collection('sessions').find({}).sort({ slug: 1 }).toArray();
+    res.status(200).json(await describeSessions(sessions));
+});
 
 module.exports = getSessions;

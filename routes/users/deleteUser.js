@@ -1,5 +1,7 @@
 const bcrypt = require('bcrypt');
 const { getDB } = require('../../services/database');
+const { removeUserData } = require('../../services/accountCleanup');
+const { disconnectUser } = require('../../services/socket');
 
 /**
  * @swagger
@@ -47,8 +49,10 @@ const deleteUser = async (req, res) => {
             return res.status(401).json({ error: 'Incorrect password.' });
         }
  
-        // delete user
+        // delete user and everything that belonged to them
         await users.deleteOne({ _id: user._id });
+        await removeUserData(user._id);
+        disconnectUser(user._id);
  
         // send ok status and message of success
         res.status(200).json({ message: 'User deleted successfully.' });
