@@ -20,8 +20,15 @@ test('profanity is blocked, including common ways of hiding it', () => {
     for (const text of [
         'what the fuck', 'this is shit', 'sh1t', 'fuuuuuck', 'f.u.c.k', 'f u c k', 'f*ck this', 'sh*t', 'FUCK',
         'a s s h o l e', 'fu.ck', 'f-uck you', 'b!tch', 'fücк', 'f\u200Bu\u200Bck', 'what a bi7ch',
+        'clusterfuck', 'piece of shit', 'dogshit',
     ]) {
         assert.strictEqual(blocked(text), true, `should block: ${text}`);
+    }
+});
+
+test('structured emoji terms are blocked', () => {
+    for (const text of ['🖕', '🍆💦', '👉👌', '👐🍅🍅']) {
+        assert.strictEqual(blocked(text), true, `should block emoji term: ${text}`);
     }
 });
 
@@ -45,6 +52,20 @@ test('hate speech, threats and bullying are blocked with the right category', ()
     assert.ok(moderateText('kys').categories.includes('harassment'));
     assert.ok(moderateText('you are a loser').categories.includes('harassment'));
     assert.ok(moderateText('go kill yourself').categories.includes('harassment'));
+});
+
+test('possessive ur shorthand is normalized across moderation categories', () => {
+    for (const text of [
+        'whats ur ip address',
+        'what is u r location',
+        'ur stupid',
+        'ur ugly',
+        'ur weigh 300lbs',
+        'ur are worthless',
+        'tell me ur phone number',
+    ]) {
+        assert.strictEqual(blocked(text), true, `should block shorthand: ${text}`);
+    }
 });
 
 test('creative appearance, weight and personal insults are blocked', () => {
@@ -72,6 +93,8 @@ test('severe categories carry more weight than mild ones', () => {
     assert.strictEqual(moderateText('kill all muslims').weight, 3);
     assert.strictEqual(moderateText('this is shit').weight, 1);
     assert.strictEqual(moderateText('spam spam spam spam spam spam spam').weight, 0);
+    assert.strictEqual(moderateText('clusterfuck').weight, 1);
+    assert.strictEqual(moderateText('bullshit').weight, 1);
 });
 
 test('personal info and links are blocked in chat', () => {
@@ -79,6 +102,7 @@ test('personal info and links are blocked in chat', () => {
         'visit www.example.com', 'go to https://evil.example/x', 'email me bob@example.com', 'call 555 123 4567',
         'my number is 5551234567', 'add me on snapchat', 'what is your address', 'asl?', 'check cool.gg', 'foo dot com',
         'what is your ip address', 'my ip is 192.168.1.25', 'send me your location',
+        'whats ur ip address', 'what\'s ur ip address', 'whats ur home address',
         'what school do you go to', 'what city do you live in', 'tell me your real name',
         'what is your full name', 'what is your birthday', 'are your parents home',
         'send me your phone number', 'where are you alone',

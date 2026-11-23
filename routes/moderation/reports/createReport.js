@@ -1,6 +1,7 @@
 const { getDB } = require('../../../services/database');
 const { REPORT_REASONS } = require('../../../services/reports');
 const { route, toObjectId } = require('../../../services/http');
+const { notifyModeratorsOfReport } = require('../../../services/socket');
 
 const MAX_REPORTS_PER_HOUR = 10;
 
@@ -9,7 +10,7 @@ const MAX_REPORTS_PER_HOUR = 10;
  * /api/reports:
  *   post:
  *     summary: Report a message or a person
- *     description: Send a report to the moderators. Report a message by its id (from a chat), or a person by their user id. The message text is saved with the report so moderators can see it even if it is deleted. You can't report yourself, and the same message can only be reported once by you.
+ *     description: Send a report to the moderators. Report a message by its id (from a chat), or a person by their user id (for example, from a chat user's context menu). Reports are stored for moderator review and alert connected moderators in real time. The message text is saved with the report so moderators can see it even if it is deleted. You can't report yourself, and duplicate open person reports are rejected.
  *     tags: [Report]
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
@@ -101,6 +102,7 @@ const createReport = route('Failed to send report.', async (req, res) => {
     }
 
     report._id = (await reports.insertOne(report)).insertedId;
+    notifyModeratorsOfReport(report);
     res.status(201).json(report);
 });
 

@@ -1,7 +1,6 @@
 // Settings for the chat filter: how serious each kind of problem is and the phrase rules
-// that go beyond a plain word list. The big profanity word list comes from the "obscenity"
-// package (it already understands things like f*ck, sh1t and fuuuck); the lists below only
-// decide HOW SERIOUS a match is and add rules for harassment, threats, hate speech and
+// that go beyond a plain word list. The structured English and emoji lists come from
+// profanity/*.json; the lists below add rules for harassment, threats, hate speech and
 // personal information. Moderators can add or allow extra words at runtime (see
 // /api/moderation/terms), so nothing here needs a redeploy to tweak.
 
@@ -16,7 +15,7 @@ const WEIGHTS = {
     spam: 0, // blocked, but not a strike
 };
 
-// words from the obscenity list that are slurs aimed at people, so they count as hate speech
+// exact slurs that should always be classified as hate speech
 const HATE_WORDS = new Set([
     'abeed', 'abo', 'africoon', 'alligator bait', 'arabush', 'beaner', 'boonga', 'boonie', 'bounty',
     'chingchong', 'ching chong', 'chink', 'chinks', 'chinaman', 'colored', 'coolie', 'coon', 'cotton picker',
@@ -32,7 +31,7 @@ const HATE_WORDS = new Set([
     'cripple', 'gimp', 'retard', 'retarded', 'retards', 'spastic', 'spaz', 'spazz', 'tard', 'tarded'
 ]);
 
-// words from the obscenity list about sex or bodies
+// legacy exact sexual terms retained for category matching
 const SEXUAL_WORDS = new Set([
     'anal', 'anus', 'bestiality', 'blowjob', 'boob', 'buttplug', 'cum', 'deepthroat', 'dildo',
     'doggystyle', 'double penetration', 'ejaculate', 'felch', 'fellatio', 'finger bang', 'fisting',
@@ -90,14 +89,14 @@ const PHRASE_RULES = [
     ['harassment', new RegExp(`\\b(?:you|u|ur|you're|youre)\\s+(?:are\\s+|r\\s+)?(?:so\\s+|such\\s+|really\\s+|very\\s+|pretty\\s+|damn\\s+|extremely\\s+|painfully\\s+|utterly\\s+|totally\\s+|absolutely\\s+|completely\\s+|beyond\\s+)?(?:a\\s+|an\\s+)?(?:${HARASSMENT_TERMS})\\b`)],
     ['harassment', new RegExp(`\\b(?:you|u|ur|you're|youre)\\s+(?:look|seem|sound|appear|smell|act|behave)\\s+(?:so\\s+|really\\s+|very\\s+|extremely\\s+|completely\\s+)?(?:${HARASSMENT_TERMS})\\b`)],
     ['harassment', new RegExp(`\\b(?:you|u|ur)\\s+(?:look|smell|sound)\\s+(?:like\\s+)?(?:a\\s+|an\\s+)?(?:${HARASSMENT_TERMS}|corpse|roadkill|monkey|rat|dog|ape|donkey|sloth|worm|cockroach|insect)\\b`)],
-    ['harassment', /\b(?:you|u)\s+(?:weigh|weight|are)\s+(?:around|about|almost|over|at least|only)?\s*\d{2,4}(?:[.,]\d+)?\s*(?:lbs?|pounds?|kg|kgs|kilos?|kilograms?|stone)\b/],
+    ['harassment', /\b(?:you|u|ur)\s+(?:weigh|weight|are)\s+(?:around|about|almost|over|at least|only)?\s*\d{2,4}(?:[.,]\d+)?\s*(?:lbs?|pounds?|kg|kgs|kilos?|kilograms?|stone)\b/],
     ['harassment', /\b(?:you|u)\s+(?:weigh|weight)\s+(?:as much as|more than|less than)\s+(?:a\s+)?(?:whale|elephant|cow|hippo|horse|pig|building)\b/],
     ['harassment', /\b(?:you|u)\s+(?:look|are)\s+(?:as\s+)?(?:fat|obese|chubby|thin|skinny|ugly)\s+as\s+(?:a\s+)?(?:whale|elephant|cow|hippo|horse|pig|stick|skeleton)\b/],
-    ['harassment', /\b(?:you|u|you're|youre)\s+(?:(?:are|r)\s+)?(?:so\s+|really\s+|very\s+|completely\s+)?(?:broke|poor|destitute|penniless|bankrupt|cheap|stingy|dirt poor)\b/],
+    ['harassment', /\b(?:you|u|you're|youre|ur)\s+(?:(?:are|r)\s+)?(?:so\s+|really\s+|very\s+|completely\s+)?(?:broke|poor|destitute|penniless|bankrupt|cheap|stingy|dirt poor)\b/],
     ['harassment', /\b(?:stay|go back)\s+(?:in|to)\s+(?:your\s+)?(?:tax bracket|price range|social class|income bracket)\b/],
-    ['harassment', /\b(?:you|u)\s+(?:can't|cannot|couldn't|dont|don't)\s+(?:afford|buy|pay for|shop for)\s+(?:a\s+|an\s+|anything\s+)?(?:nice|expensive|luxury|fancy)\b/],
+    ['harassment', /\b(?:you|u|ur)\s+(?:can't|cannot|couldn't|dont|don't)\s+(?:afford|buy|pay for|shop for)\s+(?:a\s+|an\s+|anything\s+)?(?:nice|expensive|luxury|fancy)\b/],
     ['harassment', /\b(?:people|everyone|anyone)\s+(?:in|from)\s+(?:a\s+)?(?:low income|poor)\s+(?:households?|families|neighborhoods?)\s+(?:is|are|stay)\s+(?:broke|poor|worthless|trash|pathetic|stupid)\b/],
-    ['harassment', /\b(?:you(?:'re|re)?|u)\s+(?:got|have)\s+(?:no|zero)\s+(?:friends|talent|future|life|brain|chance|personality|value)\b/],
+    ['harassment', /\b(?:you(?:'re|re)?|u|ur)\s+(?:got|have)\s+(?:no|zero)\s+(?:friends|talent|future|life|brain|chance|personality|value)\b/],
     ['harassment', /\b(?:nobody|no one|everyone|everybody)\s+(?:likes?|loves?|wants?|needs?)\s+(?:you|u)\b/],
     ['harassment', /\b(?:go|why don't you|please)\s+(?:back\s+)?(?:away|die|disappear|drop dead|kill yourself|end yourself)\b/],
     ['harassment', /\b(?:you're|youre|you|u)\s+(?:(?:are|r)\s+)?(?:so\s+)?(?:adopted|unwanted|unlovable|a mistake|a burden|a disappointment|a parasite)\b/],
@@ -110,7 +109,7 @@ const PHRASE_RULES = [
     ['privacy', /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/],
     ['privacy', /\bdot\s*(?:com|net|org)\b/],
     ['privacy', /\b(?:add|follow|dm|message|text|find|hmu|hit)\s+(?:me\s+)?(?:on\s+|at\s+)?(?:snap(?:chat)?|insta(?:gram)?|discord|tiktok|kik|telegram|whatsapp|facebook|twitter)\b/],
-    ['privacy', /\b(?:what'?s|what is|whats)\s+(?:(?:ur|your)\s+)?(?:age|address|ip(?:\s+address)?|home address|street address|phone(?:\s+number)?|number|location|city|state|country|snap(?:chat)?|insta(?:gram)?|discord|school|grade|class|birthday|birthdate|real name|full name|last name)\b/],
+    ['privacy', /\b(?:what'?s|what is|whats)\s+(?:(?:ur|u r|your|yours)\s+)?(?:age|address|ip(?:\s+address)?|home address|street address|phone(?:\s+number)?|number|location|city|state|country|snap(?:chat)?|insta(?:gram)?|discord|school|grade|class|birthday|birthdate|real name|full name|last name)\b/],
     ['privacy', /\b(?:tell|send|share|give)\s+(?:me\s+)?(?:ur|your\s+)?(?:age|address|ip(?:\s+address)?|location|phone(?:\s+number)?|number|city|state|country|school|grade|birthday|birthdate|real name|full name|last name)\b/],
     ['privacy', /\b(?:where\s+do\s+(?:you|u)\s+(?:live|go to school)|how\s+old\s+are\s+(?:you|u)|what\s+(?:school|grade|city|town|country)\s+(?:do\s+)?(?:you|u)\s+(?:go to|live in|attend)|asl)\b/],
     ['privacy', /\b(?:are\s+(?:your\s+)?parents?\s+(?:home|away)|when\s+(?:are|is)\s+(?:you|u|your parents?)\s+(?:alone|away|out|home)|where\s+(?:are\s+)?(?:you|u)\s+(?:home|alone))\b/],

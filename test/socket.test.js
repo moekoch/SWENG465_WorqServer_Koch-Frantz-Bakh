@@ -33,6 +33,36 @@ function listen(socket, event) {
 }
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test('person reports are stored and alert connected moderators only', async () => {
+    await withSockets(async (app, track) => {
+        const ann = await app.makeUser('Ann');
+        const bob = await app.makeUser('Bob');
+        const mod = await app.makeUser('Mod', { role: 'moderator' });
+        const moderatorSocket = track(await connect(app, mod));
+        const userSocket = track(await connect(app, bob));
+        const notifications = [];
+        moderatorSocket.on('moderation:report:new', (notification) => notifications.push(notification));
+        const userNotifications = [];
+        userSocket.on('moderation:report:new', (notification) => userNotifications.push(notification));
+
+        const sent = await app.api('POST', '/api/reports', {
+            token: ann.token,
+            body: { userId: bob.id, reason: 'harassment', details: 'Targeted harassment in chat.' },
+        });
+        assert.strictEqual(sent.status, 201);
+        await wait(50);
+        assert.strictEqual(notifications.length, 1);
+        assert.strictEqual(notifications[0].reportId, sent.body._id);
+        assert.strictEqual(notifications[0].reportedUserId, bob.id);
+        assert.strictEqual(notifications[0].reason, 'harassment');
+        assert.strictEqual(userNotifications.length, 0);
+
+        const persisted = await app.db.collection('reports').findOne({ reportedUserId: bob._id });
+        assert.strictEqual(persisted.status, 'open');
+        assert.strictEqual(persisted.details, 'Targeted harassment in chat.');
+    });
+});
+
 async function withSockets(run) {
     const app = await startApp();
     const sockets = [];

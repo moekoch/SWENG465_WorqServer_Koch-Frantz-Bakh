@@ -1,7 +1,7 @@
 const { randomUUID } = require('crypto');
 const { Server } = require('socket.io');
 const { getDB } = require('./database');
-const { verifyToken } = require('./auth');
+const { verifyToken, isStaff } = require('./auth');
 const { getRoomChat, submitMessage } = require('./chat');
 const { blockedIdsOf, friendIdsOf } = require('./social');
 const { settingsOf } = require('./settings');
@@ -48,6 +48,22 @@ function isUserOnline(userId) {
 // send an event to one user (does nothing if they are offline or the socket server isn't running)
 function emitToUser(userId, event, payload) {
     io?.to(userRoom(String(userId))).emit(event, payload);
+}
+
+// Alert connected moderators/admins about a report; the report itself stays in MongoDB.
+function notifyModeratorsOfReport(report) {
+    if (!io) return;
+    const notification = {
+        reportId: String(report._id),
+        reportedUserId: report.reportedUserId ? String(report.reportedUserId) : null,
+        reportedUsername: report.reportedUsername ?? null,
+        reason: report.reason,
+        createdAt: report.createdAt,
+    };
+
+    for (const socket of io.sockets.sockets.values()) {
+        if (isStaff(socket.data.user)) socket.emit('moderation:report:new', notification);
+    }
 }
 
 // how many fish are in each session: { main: 3, ... }
@@ -984,6 +1000,7 @@ module.exports = {
     updatePlayerAvatar,
     isUserOnline,
     emitToUser,
+    notifyModeratorsOfReport,
     sessionCounts,
     refreshBlocks,
 };

@@ -419,6 +419,10 @@ test('reports: sending, de-duplicating, reviewing, and the actions moderators ca
         // remove a message through a report, and ban through an admin
         const another = await report(ann.token, { userId: bob.id, reason: 'other' });
         assert.strictEqual(another.status, 201);
+        assert.strictEqual(String(another.body.reportedUserId), bob.id);
+        assert.strictEqual(another.body.reportedUsername, 'Bob');
+        assert.strictEqual((await db.collection('reports').findOne({ reportedUserId: bob._id, reason: 'other' })).status, 'open');
+        assert.strictEqual((await report(ann.token, { userId: bob.id, reason: 'other' })).status, 409);
         assert.strictEqual((await api('PATCH', `/api/reports/${another.body._id}`, { token: mod.token, body: { status: 'actioned', action: 'remove_message' } })).status, 400); // not about a message
         const banned = await api('PATCH', `/api/reports/${another.body._id}`, { token: boss.token, body: { status: 'actioned', action: 'ban' } });
         assert.strictEqual(banned.status, 200);

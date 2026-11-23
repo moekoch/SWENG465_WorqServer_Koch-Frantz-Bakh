@@ -1,7 +1,8 @@
 // Checks text before it is shown to anyone. Pure functions: no database, so it is easy to test.
 // Order of work: clean the text -> build look-alike versions (so f.u.c.k and f*ck are caught) ->
 // run the word list and phrase rules on every version -> if clean, tidy it (shouting, stretched letters).
-const { RegExpMatcher, englishDataset, englishRecommendedTransformers } = require('obscenity');
+const fs = require('fs');
+const path = require('path');
 const {
     WEIGHTS,
     HATE_WORDS,
@@ -13,10 +14,34 @@ const {
     IP_PATTERN,
 } = require('./moderationLists');
 
-const wordMatcher = new RegExpMatcher({
-    ...englishDataset.build(),
-    ...englishRecommendedTransformers,
-});
+const JSON_MODERATION_FILES = [
+    path.join(__dirname, '..', 'profanity', 'en.json'),
+    path.join(__dirname, '..', 'profanity', 'emoji.json'),
+];
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const JSON_TERMS = JSON_MODERATION_FILES.flatMap((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
+
+const SEVERITY_WEIGHTS = { 1: 1, 2: 1, 3: 2, 4: 3 };
+const MILD_GENERAL_ALLOWLIST = new Set(['hell', 'damn']);
+
+function compileJsonMatch(match) {
+    return match.split('|').map((alternative) => {
+        const normalized = alternative.trim().replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/gu, '');
+        const parts = normalized.replace(/\*/g, '\u0000').split('').map((character) =>
+            character === '\u0000' ? '[\\p{L}\\p{N}]?' : escapeRegex(character),
+        );
+        const expression = parts.join('').replace(/\s+/g, '\\s+');
+        return /^[\p{L}\p{N}]/u.test(normalized) && /[\p{L}\p{N}]$/u.test(normalized)
+            ? `(?<![\\p{L}\\p{N}])${expression}(?![\\p{L}\\p{N}])`
+            : expression;
+    });
+}
+
+const JSON_MATCHERS = JSON_TERMS.map((entry) => ({
+    entry,
+    patterns: compileJsonMatch(entry.match).map((expression) => new RegExp(expression, 'iu')),
+}));
 
 // what the person sees when something is blocked. It never says which word was the problem.
 const REASONS = {
@@ -63,12 +88,30 @@ function cleanText(text) {
 }
 
 // remove accents: "fücк" -> "fuck"
-const foldAccents = (text) => text.normalize('NFD').replace(/\p{M}/gu, '');
+const foldAccents = (text) => text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[АаВСЕеНКМОРТХХхү]/gu, (character) => ({
+        А: 'A', а: 'a', В: 'B', С: 'C', Е: 'E', е: 'e', Н: 'H', К: 'K',
+        М: 'M', О: 'O', Р: 'P', Т: 'T', Х: 'X', х: 'x', ү: 'y',
+    })[character] ?? character)
+    .replace(/[асеорхуіӏкмт]/gu, (character) => ({
+        а: 'a', с: 'c', е: 'e', о: 'o', р: 'p', х: 'x', у: 'y', і: 'i', ӏ: 'l', к: 'k', м: 'm', т: 't',
+    })[character] ?? character);
 
 // every spelling of the text a filter evasion could hide in
 function buildVariants(text) {
     const base = foldAccents(text);
     const variants = new Set([base]);
+
+    // Possessive/text shorthand used in the same way across every moderation rule:
+    // "ur" can mean "your" ("ur name") or "you're" ("ur stupid").
+    for (const shorthand of ['ur', 'u r']) {
+        if (!new RegExp(`(?<!\\p{L})${shorthand.replace(/ /g, '\\s+')}(?!\\p{L})`, 'iu').test(base)) continue;
+        const pattern = new RegExp(`(?<!\\p{L})${shorthand.replace(/ /g, '\\s+')}(?!\\p{L})`, 'giu');
+        variants.add(base.replace(pattern, 'your'));
+        variants.add(base.replace(pattern, 'you are'));
+    }
 
     // "f u c k" and "f.u.c.k" -> "fuck" (runs of single characters)
     variants.add(
@@ -111,42 +154,66 @@ const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // work out which problems the text has: a Set of category names
 function findProblems(text, { checkPrivacy }) {
     const categories = new Set();
+    const categorySeverities = new Map();
+    const record = (category, severity = WEIGHTS[category] ?? 1) => {
+        categories.add(category);
+        categorySeverities.set(category, Math.max(categorySeverities.get(category) ?? 0, severity));
+    };
     const variants = buildVariants(text);
 
     for (const variant of variants) {
-        // 1. the profanity word list
-        for (const match of wordMatcher.getAllMatches(variant)) {
-            const word = englishDataset.getPayloadWithPhraseMetadata(match).phraseMetadata.originalWord;
-            if (HATE_WORDS.has(word)) categories.add('hate');
-            else if (SEXUAL_WORDS.has(word)) categories.add('sexual');
-            else categories.add('profanity');
+        // 1. the structured profanity JSON datasets
+        const jsonTextVariants = new Set([
+            variant,
+            foldAccents(variant).toLowerCase(),
+            toPlainLowercase(variant),
+        ]);
+        for (const { entry, patterns } of JSON_MATCHERS) {
+            if (!patterns.some((pattern) => [...jsonTextVariants].some((candidate) => pattern.test(candidate)))) continue;
+
+            const tags = entry.tags ?? [];
+            if (
+                entry.severity === 1 &&
+                entry.match.split('|').some((term) => MILD_GENERAL_ALLOWLIST.has(term.trim()))
+            ) continue;
+            let category = 'profanity';
+            if (tags.includes('racial') || tags.includes('religious') || tags.includes('lgbtq')) category = 'hate';
+            else if (tags.includes('sexual') || tags.includes('shock')) category = 'sexual';
+
+            const words = entry.match.toLowerCase().split('|').filter(Boolean);
+            if (words.some((word) => HATE_WORDS.has(word.replace(/\*/g, '')))) category = 'hate';
+            let jsonWeight = SEVERITY_WEIGHTS[entry.severity] ?? 1;
+            if (category === 'profanity') jsonWeight = 1;
+            if (category === 'sexual' && tags.includes('sexual') && entry.severity < 3) jsonWeight = 1;
+            if (category === 'hate') jsonWeight = WEIGHTS.hate;
+            record(category, jsonWeight);
         }
 
         // 2. phrase rules (threats, hate, bullying, personal info)
         const lowercase = toPlainLowercase(variant);
         const plain = foldAccents(variant).toLowerCase();
-        for (const [category, pattern] of PHRASE_RULES) {
+        for (const [category, pattern, phraseWeight] of PHRASE_RULES) {
             if (!checkPrivacy && (category === 'privacy' || category === 'sexual' && pattern.source.includes('nudes'))) continue;
-            if (pattern.test(plain) || pattern.test(lowercase)) categories.add(category);
+            if (pattern.test(plain) || pattern.test(lowercase)) record(category, phraseWeight ?? WEIGHTS[category] ?? 1);
         }
 
         // 3. words the moderators added
         for (const term of customTerms.block) {
             const squeezed = term.replace(/(.)\1{2,}/g, '$1$1');
             const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(?:${escape(term)}|${escape(squeezed)})(?![\\p{L}\\p{N}])`, 'iu');
-            if (pattern.test(plain) || pattern.test(lowercase)) categories.add('profanity');
+            if (pattern.test(plain) || pattern.test(lowercase)) record('profanity');
         }
     }
 
     // phone numbers
-    if (checkPrivacy && PHONE_PATTERN.test(text)) categories.add('privacy');
+    if (checkPrivacy && PHONE_PATTERN.test(text)) record('privacy');
     // IP addresses expose a person's network location
-    if (checkPrivacy && IP_PATTERN.test(text)) categories.add('privacy');
+    if (checkPrivacy && IP_PATTERN.test(text)) record('privacy');
 
     // the same word again and again
-    if (/\b(\p{L}+)(?:\s+\1){5,}\b/iu.test(text)) categories.add('spam');
+    if (/\b(\p{L}+)(?:\s+\1){5,}\b/iu.test(text)) record('spam');
 
-    return categories;
+    return { categories, categorySeverities };
 }
 
 // make allowed text tidier: no SHOUTING, no "heyyyyyyyy"
@@ -168,11 +235,14 @@ function tidy(text) {
 function moderateText(input, { kind = 'chat', maxLength = 120, allowReserved = false } = {}) {
     const text = cleanText(input);
 
-    const fail = (categories, reason) => ({
+    const fail = (categories, reason, categorySeverities = new Map()) => ({
         allowed: false,
         text,
         categories,
-        weight: categories.reduce((highest, category) => Math.max(highest, WEIGHTS[category] ?? 0), 0),
+        weight: categories.reduce((highest, category) => Math.max(
+            highest,
+            categorySeverities.get(category) ?? WEIGHTS[category] ?? 0,
+        ), 0),
         reason,
     });
 
@@ -192,9 +262,9 @@ function moderateText(input, { kind = 'chat', maxLength = 120, allowReserved = f
         }
     }
 
-    if (found.size > 0) {
-        const categories = SEVERITY_ORDER.filter((category) => found.has(category));
-        return fail(categories, REASONS[categories[0]]);
+    if (found.categories.size > 0) {
+        const categories = SEVERITY_ORDER.filter((category) => found.categories.has(category));
+        return fail(categories, REASONS[categories[0]], found.categorySeverities);
     }
 
     return {

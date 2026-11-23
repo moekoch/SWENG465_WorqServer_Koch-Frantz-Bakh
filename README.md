@@ -129,6 +129,13 @@ Every endpoint is listed in one file, `routes/index.js`, with who may call it. I
 | Bots | `GET/POST /api/bots`, `GET/PUT/DELETE /api/bots/:id` |
 | Games | results `/api/games/results`, scores `/api/games/scores/me`, `/bots`, `/friends`, `/users/:id` |
 
+To report someone from a chat user's menu, use their user ID from the chat event (`id`) and send
+`POST /api/reports` with `{ "userId": "<user id>", "reason": "harassment" }`. Valid reasons are
+`profanity`, `hate`, `harassment`, `threat`, `privacy`, `sexual`, `spam`, and `other`; optional
+`details` can contain up to 300 characters. Reports are stored in the `reports` collection and
+appear in moderator `GET /api/reports` results. Duplicate open reports by the same person are
+rejected.
+
 Live events (socket.io, connect with `auth: { token }`):
 
 | Event | Direction | What it is |
@@ -138,6 +145,7 @@ Live events (socket.io, connect with `auth: { token }`):
 | `chat:message` `{ id, messageId, username, text, at }` | server to client | A message from someone in the room |
 | `chat:private` `{ chatId, message }` | server to client | A new message in a direct or group chat |
 | `moderation:muted` / `moderation:unmuted` / `moderation:warning` | server to client | Chat break started or ended, or a warning from a moderator |
+| `moderation:report:new` `{ reportId, reportedUserId, reportedUsername, reason, createdAt }` | server to client | A newly stored report, sent only to connected moderators and admins; fetch full details with `GET /api/reports/:id` |
 | `friend:request` / `friend:accepted` / `friend:removed` / `friend:presence` | server to client | Friends changes, and a friend coming online or going offline |
 | `invite:received` / `invite:updated` / `invite:withdrawn` | server to client | Invites |
 
@@ -180,3 +188,7 @@ npm test
 ```
 
 Runs the filter tests and then runs every route and the live chat against an in-memory copy of the database (`test/helpers/fakeDb.js`), so no MongoDB connection is needed.
+
+## Profanity Censorship
+
+Using .json format lists from **https://github.com/dsojevic/profanity-list**.
