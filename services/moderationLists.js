@@ -18,8 +18,18 @@ const WEIGHTS = {
 
 // words from the obscenity list that are slurs aimed at people, so they count as hate speech
 const HATE_WORDS = new Set([
-    'abeed', 'abo', 'africoon', 'arabush', 'boonga', 'chingchong', 'chink', 'dyke',
-    'fag', 'kike', 'negro', 'nigger', 'retard', 'spastic', 'tranny',
+    'abeed', 'abo', 'africoon', 'alligator bait', 'arabush', 'beaner', 'boonga', 'boonie', 'bounty',
+    'chingchong', 'ching chong', 'chink', 'chinks', 'chinaman', 'colored', 'coolie', 'coon', 'cotton picker',
+    'cracker', 'darkie', 'dune coon', 'gook', 'greaser', 'guido', 'gyppo', 'hick', 'honky', 'honkie',
+    'jap', 'jigaboo', 'jungle bunny', 'khazar', 'kike', 'kyke', 'heeb', 'hymie', 'lebo', 'limey',
+    'macaca', 'mick', 'mong', 'mongoloid', 'negro', 'nigger', 'niggers', 'nigga', 'niggah', 'niglet',
+    'paki', 'papist', 'paddy', 'pickaninny', 'polack', 'porch monkey', 'raghead', 'redskin', 'redskins',
+    'sambo', 'sand nigger', 'sideways vagina', 'slant eyes', 'slope', 'spic', 'spook', 'tar baby',
+    'towelhead', 'towel head', 'uncle tom', 'wetback', 'white trash', 'wop', 'yid', 'zipperhead',
+    'batty boy', 'bumboy', 'butch dyke', 'carpet muncher', 'dyke', 'dykes', 'fag', 'faggot', 'faggots',
+    'fudgepacker', 'gaylord', 'homo', 'lesbo', 'poof', 'poofter', 'queer', 'sodomite', 'tranny', 'trannies',
+    'bimbo', 'bitch', 'bitches', 'cunt', 'gold digger', 'shemale', 'skank', 'slut', 'slutty', 'whore',
+    'cripple', 'gimp', 'retard', 'retarded', 'retards', 'spastic', 'spaz', 'spazz', 'tard', 'tarded'
 ]);
 
 // words from the obscenity list about sex or bodies
@@ -38,13 +48,28 @@ const GROUPS =
 const VIOLENT_VERBS = 'kill|murder|exterminate|eradicate|eliminate|gas|lynch|burn|hang|shoot|execute';
 
 const DEMEANING_WORDS =
-    'subhuman|vermin|animals|filth|disgusting|trash|scum|parasites|inferior|evil|stupid|dumb';
+    'subhuman|vermin|animals|filth|disgusting|trash|scum|parasites|inferior|evil|stupid|dumb|imbecile';
 
 const GENDER_GROUPS = 'women|girls|men|boys|females?|males?';
+const HATE_TERM_PATTERN = [...HATE_WORDS]
+    .sort((a, b) => b.length - a.length)
+    .join('|');
+
+const HARASSMENT_TERMS =
+    'loser|ugly|hideous|disgusting|revolting|gross|stupid|dumb|idiot|moron|brainless|' +
+    'worthless|useless|pathetic|freak|creep|trash|garbage|scum|lame|lousy|failure|fail|weak|' +
+    'weird|weirdo|nobody|nothing|waste|wimp|coward|spineless|dense|ignorant|clueless|slow|' +
+    'uneducated|illiterate|incompetent|inept|ridiculous|obnoxious|annoying|boring|hated|' +
+    'broke|poor|destitute|penniless|bankrupt|beggar|cheap|stingy|trailer trash|white trash|' +
+    'welfare queen|ghetto|poverty-stricken|working poor|dirt poor|' +
+    'fat|obese|chunky|chubby|pudgy|blimp|whale|pig|piggy|cow|hippo|elephant|beefcake|' +
+    'skinny|skin-and-bones|anorexic|boney|skeleton|stick|toothpick|bald|baldy|four-eyes|' +
+    'wrinkly|old hag|hag|geriatric|zombie|troll|gremlin|alien|freakshow|fishface|buttface';
 
 // phrase rules, run on the cleaned lowercase text. Each: [category, regular expression, optional weight]
 const PHRASE_RULES = [
     // hate speech aimed at groups of people
+    ['hate', new RegExp(`\\b(?:${HATE_TERM_PATTERN})\\b`, 'iu')],
     ['hate', new RegExp(`\\b(?:${VIOLENT_VERBS})\\s+(?:all\\s+|every\\s+|the\\s+|those\\s+)*(?:${GROUPS})\\b`)],
     ['hate', new RegExp(`\\b(?:hate|despise)\\s+(?:all\\s+|every\\s+)(?:${GROUPS})\\b`)],
     ['hate', new RegExp(`\\b(?:${GROUPS})\\s+(?:are|r)\\s+(?:all\\s+)?(?:${DEMEANING_WORDS})\\b`), 2],
@@ -62,7 +87,21 @@ const PHRASE_RULES = [
     ['harassment', /\b(?:kys|kill yourself|kill urself|go die|neck yourself|end yourself|hope you die|hope u die|nobody likes you|nobody likes u)\b/, 3],
 
     // name calling and bullying
-    ['harassment', /\b(?:you|u|ur|you're|youre)\s+(?:are\s+|r\s+)?(?:so\s+|such\s+|really\s+|very\s+)?(?:a\s+|an\s+)?(?:loser|ugly|stupid|dumb|idiot|moron|worthless|trash|freak|fat|pathetic|creep)\b/],
+    ['harassment', new RegExp(`\\b(?:you|u|ur|you're|youre)\\s+(?:are\\s+|r\\s+)?(?:so\\s+|such\\s+|really\\s+|very\\s+|pretty\\s+|damn\\s+|extremely\\s+|painfully\\s+|utterly\\s+|totally\\s+|absolutely\\s+|completely\\s+|beyond\\s+)?(?:a\\s+|an\\s+)?(?:${HARASSMENT_TERMS})\\b`)],
+    ['harassment', new RegExp(`\\b(?:you|u|ur|you're|youre)\\s+(?:look|seem|sound|appear|smell|act|behave)\\s+(?:so\\s+|really\\s+|very\\s+|extremely\\s+|completely\\s+)?(?:${HARASSMENT_TERMS})\\b`)],
+    ['harassment', new RegExp(`\\b(?:you|u|ur)\\s+(?:look|smell|sound)\\s+(?:like\\s+)?(?:a\\s+|an\\s+)?(?:${HARASSMENT_TERMS}|corpse|roadkill|monkey|rat|dog|ape|donkey|sloth|worm|cockroach|insect)\\b`)],
+    ['harassment', /\b(?:you|u)\s+(?:weigh|weight|are)\s+(?:around|about|almost|over|at least|only)?\s*\d{2,4}(?:[.,]\d+)?\s*(?:lbs?|pounds?|kg|kgs|kilos?|kilograms?|stone)\b/],
+    ['harassment', /\b(?:you|u)\s+(?:weigh|weight)\s+(?:as much as|more than|less than)\s+(?:a\s+)?(?:whale|elephant|cow|hippo|horse|pig|building)\b/],
+    ['harassment', /\b(?:you|u)\s+(?:look|are)\s+(?:as\s+)?(?:fat|obese|chubby|thin|skinny|ugly)\s+as\s+(?:a\s+)?(?:whale|elephant|cow|hippo|horse|pig|stick|skeleton)\b/],
+    ['harassment', /\b(?:you|u|you're|youre)\s+(?:(?:are|r)\s+)?(?:so\s+|really\s+|very\s+|completely\s+)?(?:broke|poor|destitute|penniless|bankrupt|cheap|stingy|dirt poor)\b/],
+    ['harassment', /\b(?:stay|go back)\s+(?:in|to)\s+(?:your\s+)?(?:tax bracket|price range|social class|income bracket)\b/],
+    ['harassment', /\b(?:you|u)\s+(?:can't|cannot|couldn't|dont|don't)\s+(?:afford|buy|pay for|shop for)\s+(?:a\s+|an\s+|anything\s+)?(?:nice|expensive|luxury|fancy)\b/],
+    ['harassment', /\b(?:people|everyone|anyone)\s+(?:in|from)\s+(?:a\s+)?(?:low income|poor)\s+(?:households?|families|neighborhoods?)\s+(?:is|are|stay)\s+(?:broke|poor|worthless|trash|pathetic|stupid)\b/],
+    ['harassment', /\b(?:you(?:'re|re)?|u)\s+(?:got|have)\s+(?:no|zero)\s+(?:friends|talent|future|life|brain|chance|personality|value)\b/],
+    ['harassment', /\b(?:nobody|no one|everyone|everybody)\s+(?:likes?|loves?|wants?|needs?)\s+(?:you|u)\b/],
+    ['harassment', /\b(?:go|why don't you|please)\s+(?:back\s+)?(?:away|die|disappear|drop dead|kill yourself|end yourself)\b/],
+    ['harassment', /\b(?:you're|youre|you|u)\s+(?:(?:are|r)\s+)?(?:so\s+)?(?:adopted|unwanted|unlovable|a mistake|a burden|a disappointment|a parasite)\b/],
+    ['harassment', /\b(?:kill|die|drop dead|shut up|piss off|get lost|fuck off|screw off)\s+(?:you|u|bitch|loser|idiot)\b/],
     ['harassment', /\bshut\s+(?:up|ur|your)\b/],
 
     // personal information and links (a safety rule for a space that younger people use)

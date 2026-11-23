@@ -35,10 +35,37 @@ test('hate speech, threats and bullying are blocked with the right category', ()
     assert.ok(moderateText('girls should stay in the kitchen').categories.includes('hate'));
     assert.ok(moderateText('you belong in the kitchen').categories.includes('hate'));
     assert.ok(moderateText('go make me a sandwich').categories.includes('hate'));
+    for (const text of [
+        'faggot', 'dyke', 'coon', 'wetback', 'kike', 'towel head', 'mongoloid', 'retard',
+        'redskin', 'shemale', 'whore', 'cracker',
+    ]) {
+        assert.ok(moderateText(text).categories.includes('hate'), `should block hate term: ${text}`);
+    }
     assert.ok(moderateText('i will kill you').categories.includes('threat'));
     assert.ok(moderateText('kys').categories.includes('harassment'));
     assert.ok(moderateText('you are a loser').categories.includes('harassment'));
     assert.ok(moderateText('go kill yourself').categories.includes('harassment'));
+});
+
+test('creative appearance, weight and personal insults are blocked', () => {
+    for (const text of [
+        'you weigh 300lbs', 'you weigh 300 pounds', 'you look like a whale',
+        'you are a blimp', 'you are obese', 'you are painfully ugly',
+        'you have no friends', 'no one likes you', 'nobody wants you',
+        'you look like a rat', 'you smell disgusting', 'you are adopted',
+        'you are a burden', 'you are a waste', 'you are worthless',
+        'you are a moron', 'you are completely clueless', 'you are a troll',
+        'you have no talent', 'go drop dead', 'fuck off loser',
+        'you are broke', 'you are poor', 'you are dirt poor',
+        'stay in your tax bracket', 'you cannot afford a nice phone',
+        'people in low income households are worthless',
+    ]) {
+        assert.ok(moderateText(text).categories.includes('harassment'), `should block insult: ${text}`);
+    }
+
+    assert.strictEqual(moderateText('you are not stupid').allowed, true);
+    assert.strictEqual(moderateText('fat is an adjective in this sentence').allowed, true);
+    assert.strictEqual(moderateText('I grew up in a low income household').allowed, true);
 });
 
 test('severe categories carry more weight than mild ones', () => {
